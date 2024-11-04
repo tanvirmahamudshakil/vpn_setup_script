@@ -67,6 +67,10 @@ echo "WireGuard has been installed."
 echo "Installing Git..."
 sudo apt install -y git
 
+
+echo "back root folder"
+cd ..
+
 # Clone a Git repository
 echo "Cloning a sample Git repository..."
 git clone https://github.com/tanvirmahamudshakil/wareguard_api.git
