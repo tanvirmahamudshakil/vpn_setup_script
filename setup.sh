@@ -8,32 +8,24 @@ sudo apt update
 echo "Installing required dependencies..."
 sudo apt install -y curl
 
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh
+sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh
 
+sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+sudo source ~/.bashrc
 
+sudo nvm list-remote
 
-source ~/.bashrc
-
-nvm list-remote
-
-
-nvm install v20.18.0
-
-
+sudo nvm install v20.18.0
 
 echo "Verifying Node.js installation..."
-node -v
-npm -v
+sudo node -v
+sudo npm -v
 
-npm i pm2 -g
-
+sudo npm i pm2 -g
 
 echo "Installing Nginx..."
 sudo apt install -y nginx
-
-
 
 # Install UFW
 echo "Installing UFW..."
@@ -61,7 +53,6 @@ sudo apt install -y nano
 # Install WireGuard
 echo "Installing WireGuard..."
 sudo apt install -y wireguard
-
 echo "WireGuard has been installed."
 
 
