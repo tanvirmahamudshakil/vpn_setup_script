@@ -27,6 +27,37 @@ sudo npm i pm2 -g
 echo "Installing Nginx..."
 sudo apt install -y nginx
 
+config_block="
+location / {
+    proxy_http_version 1.1;
+    proxy_cache_bypass \$http_upgrade;
+
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+
+    proxy_pass http://localhost:3002;
+}
+"
+
+# Define the path to the Nginx configuration file
+nginx_config_file="/etc/nginx/sites-available/default"
+
+# Check if the configuration block is already present
+if grep -Fxq "$config_block" "$nginx_config_file"; then
+    echo "Configuration block already exists in $nginx_config_file"
+else
+    # Append the configuration block to the Nginx config file
+    echo "$config_block" | sudo tee -a "$nginx_config_file" > /dev/null
+    echo "Configuration block added to $nginx_config_file"
+    
+    # Reload Nginx to apply changes
+    sudo nginx -s reload
+    echo "Nginx reloaded to apply changes."
+
 # Install UFW
 echo "Installing UFW..."
 sudo apt install -y ufw
