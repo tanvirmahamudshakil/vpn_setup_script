@@ -8,13 +8,13 @@ sudo apt update
 echo "Installing required dependencies..."
 sudo apt install -y curl
 
-sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh
 
-sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 
-sudo source ~/.bashrc
+source ~/.bashrc
 
-sudo nvm list-remote
+nvm list-remote
 
 sudo nvm install v20.18.0
 
@@ -61,8 +61,8 @@ echo "Installing Git..."
 sudo apt install -y git
 
 
-echo "back root folder"
-cd ..
+# echo "back root folder"
+# cd ..
 
 # Clone a Git repository
 echo "Cloning a sample Git repository..."
