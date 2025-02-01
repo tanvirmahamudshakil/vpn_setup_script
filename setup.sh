@@ -49,7 +49,6 @@ server {
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                 proxy_set_header X-Forwarded-Proto $scheme;
-
                 proxy_pass http://localhost:3002;
         }
 
@@ -74,7 +73,8 @@ sudo ufw allow 'Nginx Full'
 sudo ufw allow 22
 
 # Enable UFW
-sudo ufw enable
+echo "Enabling UFW (firewall)..."
+yes | sudo ufw enable
 
 echo "Setup complete. Your Node.js app should be available through Nginx at your_domain_or_ip."
 echo "Firewall (UFW) is now active and allowing OpenSSH and Nginx."
