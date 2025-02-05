@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Set non-interactive mode to prevent prompts during installation
+export DEBIAN_FRONTEND=noninteractive
+
+
 # Script to install and set up Node.js on a VPS
 
 echo "Updating package list..."
