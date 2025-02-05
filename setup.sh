@@ -8,15 +8,8 @@ sudo apt update
 echo "Installing required dependencies..."
 sudo apt install -y curl
 
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh
-
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
-
-source ~/.bashrc
-
-nvm list-remote
-
-sudo nvm install v20.18.0
+curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+sudo apt install -y nodejs
 
 echo "Verifying Node.js installation..."
 sudo node -v
