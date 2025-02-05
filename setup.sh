@@ -1,7 +1,11 @@
 #!/bin/bash
 
+export NEEDRESTART_MODE=a
+
 # Set non-interactive mode to prevent prompts during installation
-export DEBIAN_FRONTEND=noninteractive
+sudo apt install -y needrestart
+echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/needrestart.conf
+
 
 
 # Script to install and set up Node.js on a VPS
