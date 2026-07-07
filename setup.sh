@@ -25,10 +25,21 @@ WG_IF="${WG_IF:-wg0}"                # WireGuard interface name
 DNS="${DNS:-1.1.1.1}"                # DNS pushed to clients
 WG_CLIENTS="${WG_CLIENTS:-50}"       # how many client configs to create (default 50)
 WG_DIR="/etc/wireguard"
-CLIENT_OUT="${CLIENT_OUT:-/root/wg-clients}"
+# client configs live in /etc/wireguard as client-<ip>.conf so the wareguard_api
+# (single-profile / inactive-profile / new_client) reads/writes the SAME files.
+CLIENT_OUT="${CLIENT_OUT:-$WG_DIR}"
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
+
+# ---- fresh clean: wipe any previous WireGuard state ------------------------
+echo "==> Cleaning previous WireGuard install..."
+systemctl stop "wg-quick@${WG_IF}" 2>/dev/null || true
+systemctl disable "wg-quick@${WG_IF}" 2>/dev/null || true
+wg-quick down "${WG_IF}" 2>/dev/null || true
+apt-get purge -y wireguard wireguard-tools 2>/dev/null || true
+rm -rf "$WG_DIR"
+rm -f /root/wg-clients/*.conf 2>/dev/null || true
 
 echo "==> Installing packages..."
 apt update -y
@@ -57,59 +68,65 @@ if ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf; then
 fi
 
 # ---- server keys ----------------------------------------------------------
+# NOTE: key filenames match wareguard_api (server-private.key / server-public.key)
+# so /new_client can read the server pubkey it wrote.
 mkdir -p "$WG_DIR"
 umask 077
-if [ ! -f "$WG_DIR/server_private.key" ]; then
+if [ ! -f "$WG_DIR/server-private.key" ]; then
   echo "==> Generating server keys..."
-  wg genkey | tee "$WG_DIR/server_private.key" | wg pubkey > "$WG_DIR/server_public.key"
+  wg genkey | tee "$WG_DIR/server-private.key" | wg pubkey > "$WG_DIR/server-public.key"
 fi
-SRV_PRIV="$(cat "$WG_DIR/server_private.key")"
-SRV_PUB="$(cat "$WG_DIR/server_public.key")"
+SRV_PRIV="$(cat "$WG_DIR/server-private.key")"
+SRV_PUB="$(cat "$WG_DIR/server-public.key")"
 
 # ---- write server config --------------------------------------------------
+# Layout mirrors wareguard_api NewServerCreate() exactly so API can append peers.
 echo "==> Writing $WG_DIR/$WG_IF.conf ..."
 cat > "$WG_DIR/$WG_IF.conf" <<EOF
 [Interface]
 Address = ${WG_NET}.1/24
-ListenPort = ${WG_PORT}
 PrivateKey = ${SRV_PRIV}
-# NAT + forwarding rules (applied on up/down)
-PostUp   = iptables -A FORWARD -i ${WG_IF} -j ACCEPT; iptables -A FORWARD -o ${WG_IF} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${NIC} -j MASQUERADE
-PostDown = iptables -D FORWARD -i ${WG_IF} -j ACCEPT; iptables -D FORWARD -o ${WG_IF} -j ACCEPT; iptables -t nat -D POSTROUTING -o ${NIC} -j MASQUERADE
+ListenPort = ${WG_PORT}
+PostUp = iptables -A FORWARD -i ${WG_IF} -j ACCEPT
+PostUp = iptables -A FORWARD -o ${WG_IF} -j ACCEPT
+PostUp = iptables -t nat -A POSTROUTING -s ${WG_NET}.0/24 -o ${NIC} -j MASQUERADE
+PreDown = iptables -D FORWARD -i ${WG_IF} -j ACCEPT
+PreDown = iptables -D FORWARD -o ${WG_IF} -j ACCEPT
+PreDown = iptables -t nat -D POSTROUTING -s ${WG_NET}.0/24 -o ${NIC} -j MASQUERADE
 EOF
 
 # ---- generate clients -----------------------------------------------------
 mkdir -p "$CLIENT_OUT"
 echo "==> Creating $WG_CLIENTS client(s)..."
+# Peer + client-conf layout mirrors wareguard_api NewClientCreate() exactly:
+#   - server peer block: no PresharedKey, AllowedIPs = <ip>/32
+#   - client file: /etc/wireguard/client-<ip>.conf
+# so API /new_client keeps adding peers and /single-profile can read them.
 for i in $(seq 1 "$WG_CLIENTS"); do
   CIP="${WG_NET}.$((i+1))"                 # 10.8.0.2, .3, ...
   CPRIV="$(wg genkey)"
   CPUB="$(echo "$CPRIV" | wg pubkey)"
-  CPSK="$(wg genpsk)"                       # per-peer preshared key (extra security)
 
   # add peer to server config
   cat >> "$WG_DIR/$WG_IF.conf" <<EOF
 
 [Peer]
-# client${i}
 PublicKey = ${CPUB}
-PresharedKey = ${CPSK}
 AllowedIPs = ${CIP}/32
 EOF
 
-  # write client config
-  CFILE="$CLIENT_OUT/client${i}.conf"
+  # write client config (API naming: client-<ip>.conf)
+  CFILE="$CLIENT_OUT/client-${CIP}.conf"
   cat > "$CFILE" <<EOF
 [Interface]
 PrivateKey = ${CPRIV}
-Address = ${CIP}/24
+Address = ${CIP}/32
 DNS = ${DNS}
 
 [Peer]
 PublicKey = ${SRV_PUB}
-PresharedKey = ${CPSK}
 Endpoint = ${PUB_IP}:${WG_PORT}
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 EOF
   echo "   -> $CFILE"
@@ -124,7 +141,7 @@ ufw allow "${WG_PORT}"/udp || true    # WireGuard
 ufw allow 80/tcp || true              # Nginx HTTP
 ufw allow 443/tcp || true             # Nginx HTTPS
 echo "==> Enabling UFW..."
-yes | ufw enable
+ufw --force enable
 ufw reload || true
 
 # ---- start service --------------------------------------------------------
@@ -142,10 +159,11 @@ echo "============================================================"
 wg show "${WG_IF}" || true
 
 # ---- print QR for first client (scan with phone app) ----------------------
-if [ -f "$CLIENT_OUT/client1.conf" ]; then
+FIRST_CLIENT="$CLIENT_OUT/client-${WG_NET}.2.conf"
+if [ -f "$FIRST_CLIENT" ]; then
   echo
-  echo "Scan this QR in the WireGuard phone app (client1):"
-  qrencode -t ansiutf8 < "$CLIENT_OUT/client1.conf" || true
+  echo "Scan this QR in the WireGuard phone app (${WG_NET}.2):"
+  qrencode -t ansiutf8 < "$FIRST_CLIENT" || true
 fi
 
 # ===========================================================================
@@ -221,4 +239,4 @@ echo "============================================================"
 pm2 list
 
 echo
-echo "Done. WireGuard + Node app both up. Client configs in ${CLIENT_OUT}/"
+echo "Done. WireGuard + Node app both up. Client configs: ${CLIENT_OUT}/client-<ip>.conf"
