@@ -23,7 +23,8 @@ WG_PORT="${WG_PORT:-51820}"          # UDP port WireGuard listens on
 WG_NET="${WG_NET:-10.8.0}"           # VPN subnet prefix -> 10.8.0.0/24
 WG_IF="${WG_IF:-wg0}"                # WireGuard interface name
 DNS="${DNS:-1.1.1.1}"                # DNS pushed to clients
-WG_CLIENTS="${WG_CLIENTS:-50}"       # how many client configs to create (default 50)
+WG_CLIENTS="${WG_CLIENTS:-0}"        # pre-create clients in this script (0 = let the API do it)
+API_PROFILES="${API_PROFILES:-100}"  # profiles the wareguard_api creates after it boots
 WG_DIR="/etc/wireguard"
 # client configs live in /etc/wireguard as client-<ip>.conf so the wareguard_api
 # (single-profile / inactive-profile / new_client) reads/writes the SAME files.
@@ -231,10 +232,26 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 'Nginx Full' || true
 fi
 
+# ---- create client profiles via the API -----------------------------------
+# wait for the API to be reachable, then ask it to create ${API_PROFILES} clients.
+if [ "${API_PROFILES}" -gt 0 ]; then
+  echo "==> Waiting for API on localhost:${APP_PORT} ..."
+  for _ in $(seq 1 30); do
+    curl -fsS -o /dev/null "http://localhost:${APP_PORT}/health" -H "ab: d2lyZWd1YXJkLWFi" && break
+    sleep 1
+  done
+
+  echo "==> Creating ${API_PROFILES} client profiles via API ..."
+  curl -fsS "http://localhost:${APP_PORT}/new_client?profile=${API_PROFILES}" \
+       -H "ab: d2lyZWd1YXJkLWFi" || echo "   (API profile creation failed — check 'pm2 logs')"
+  echo
+fi
+
 echo
 echo "============================================================"
 echo " App '$APP_ENTRY' running via PM2 (port ${APP_PORT})"
 echo " Nginx proxying http://${PUB_IP}/  ->  localhost:${APP_PORT}"
+echo " Created ${API_PROFILES} client profiles: ${WG_DIR}/client-<ip>.conf"
 echo "============================================================"
 pm2 list
 
