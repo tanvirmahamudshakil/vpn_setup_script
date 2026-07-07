@@ -256,9 +256,14 @@ if [ "${API_PROFILES}" -gt 0 ]; then
 
   echo "==> Creating ${API_PROFILES} client profiles via API ..."
   curl -fsS "http://localhost:${APP_PORT}/new_client?profile=${API_PROFILES}" \
+       -H "Host: ${PUB_IP}:${APP_PORT}" \
        -H "ab: d2lyZWd1YXJkLWFi" || echo "   (API profile creation failed — check 'pm2 logs')"
   echo
 fi
+
+echo "==> Normalizing generated client endpoints to ${PUB_IP}:${WG_PORT} ..."
+find "${WG_DIR}" -maxdepth 1 -type f -name 'client-*.conf' \
+  -exec sed -i "s/^Endpoint = .*:${WG_PORT}\$/Endpoint = ${PUB_IP}:${WG_PORT}/" {} \;
 
 echo
 echo "============================================================"
