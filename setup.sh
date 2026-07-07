@@ -67,6 +67,12 @@ sysctl -w net.ipv4.ip_forward=1 >/dev/null
 if ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf; then
   echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 fi
+sysctl -w net.ipv4.conf.all.src_valid_mark=1 >/dev/null || true
+if grep -q '^#\?net.ipv4.conf.all.src_valid_mark=' /etc/sysctl.conf; then
+  sed -i 's/^#\?net\.ipv4\.conf\.all\.src_valid_mark=.*/net.ipv4.conf.all.src_valid_mark=1/' /etc/sysctl.conf
+else
+  echo 'net.ipv4.conf.all.src_valid_mark=1' >> /etc/sysctl.conf
+fi
 
 # ---- server keys ----------------------------------------------------------
 # NOTE: key filenames match wareguard_api (server-private.key / server-public.key)
@@ -88,11 +94,11 @@ cat > "$WG_DIR/$WG_IF.conf" <<EOF
 Address = ${WG_NET}.1/24
 PrivateKey = ${SRV_PRIV}
 ListenPort = ${WG_PORT}
-PostUp = iptables -A FORWARD -i ${WG_IF} -j ACCEPT
-PostUp = iptables -A FORWARD -o ${WG_IF} -j ACCEPT
+PostUp = iptables -A FORWARD -i ${WG_IF} -o ${NIC} -j ACCEPT
+PostUp = iptables -A FORWARD -i ${NIC} -o ${WG_IF} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 PostUp = iptables -t nat -A POSTROUTING -s ${WG_NET}.0/24 -o ${NIC} -j MASQUERADE
-PreDown = iptables -D FORWARD -i ${WG_IF} -j ACCEPT
-PreDown = iptables -D FORWARD -o ${WG_IF} -j ACCEPT
+PreDown = iptables -D FORWARD -i ${WG_IF} -o ${NIC} -j ACCEPT
+PreDown = iptables -D FORWARD -i ${NIC} -o ${WG_IF} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 PreDown = iptables -t nat -D POSTROUTING -s ${WG_NET}.0/24 -o ${NIC} -j MASQUERADE
 EOF
 
@@ -136,11 +142,18 @@ done
 # ---- firewall (UFW) -------------------------------------------------------
 echo "==> Configuring UFW..."
 apt install -y ufw
+if grep -q '^DEFAULT_FORWARD_POLICY=' /etc/default/ufw; then
+  sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+else
+  echo 'DEFAULT_FORWARD_POLICY="ACCEPT"' >> /etc/default/ufw
+fi
 ufw allow OpenSSH || true
 ufw allow 22/tcp || true
 ufw allow "${WG_PORT}"/udp || true    # WireGuard
 ufw allow 80/tcp || true              # Nginx HTTP
 ufw allow 443/tcp || true             # Nginx HTTPS
+ufw route allow in on "${WG_IF}" out on "${NIC}" || true
+ufw route allow in on "${NIC}" out on "${WG_IF}" || true
 echo "==> Enabling UFW..."
 ufw --force enable
 ufw reload || true
